@@ -593,16 +593,18 @@ module Fastlane
         })
 
         part_size = 10 * 1024 * 1024 # 10 MB
-        parts = file_data.each_slice(part_size).map.with_index(1) do |part, part_number|
-          multipart_upload.upload_part({
+        file_data.each_slice(part_size).with_index(1) do |part, part_number|
+          part_response = obj.upload_part({
             part_number: part_number,
-            body: part
+            body: part,
+            upload_id: multipart_upload.upload_id
           })
+          parts << {etag: part_response.etag, part_number: part_number}
         end
 
         obj = multipart_upload.complete({
           multipart_upload: {
-            parts: parts.map { |part| {etag: part.etag, part_number: part.part_number} }
+            parts: parts
           }
         })
 
