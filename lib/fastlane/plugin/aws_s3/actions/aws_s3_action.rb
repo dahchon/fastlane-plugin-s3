@@ -5,6 +5,7 @@ require 'ostruct'
 require 'cgi'
 require 'mime-types'
 require 'pathname'
+require 'uri'
 
 module Fastlane
   module Actions
@@ -357,6 +358,21 @@ module Fastlane
         apk_file_data = File.open(apk_file, 'rb')
 
         apk_url = self.upload_file(s3_client, s3_bucket, app_directory, apk_file_name, apk_file_data, acl, server_side_encryption, download_endpoint, download_endpoint_replacement_regex)
+
+        public_base = ENV['FASTLANE_PLUGIN_S3_PUBLIC_BASE_URL']
+        if public_base && public_base.length > 0
+          uri = URI.parse(apk_url)
+          public_base_uri = URI.parse(public_base)
+
+          # Replace scheme and host
+          uri.scheme = public_base_uri.scheme
+          uri.host = public_base_uri.host
+
+          # Assign the modified URL back to apk_url
+          apk_url = uri.to_s
+
+          UI.success("Replaced apk url to #{apk_url}")
+        end
 
         # Setting action and environment variables
         Actions.lane_context[SharedValues::S3_APK_OUTPUT_PATH] = apk_url
