@@ -367,6 +367,7 @@ module Fastlane
           # Replace scheme and host
           uri.scheme = public_base_uri.scheme
           uri.host = public_base_uri.host
+          uri.host = public_base_uri.port
 
           # Assign the modified URL back to apk_url
           apk_url = uri.to_s
