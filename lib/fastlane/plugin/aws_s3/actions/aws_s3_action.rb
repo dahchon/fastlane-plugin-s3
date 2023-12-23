@@ -575,47 +575,24 @@ module Fastlane
           file_name = "#{app_directory}/#{file_name}"
         end
 
-        bucket = Aws::S3::Bucket.new(bucket_name, client: s3_client)
-        obj = bucket.object(file_name)
+        archive_object = Aws::S3::Object.new(bucket_name, file_name, client: s3_client)
 
-        # Start multipart upload
-        multipart_upload = obj.initiate_multipart_upload({
-          acl: acl,
-          content_type: MIME::Types.type_for(File.extname(file_name)).first.to_s,
-          server_side_encryption: server_side_encryption.length > 0 ? server_side_encryption : nil
-        })
-
-        part_size = 10 * 1024 * 1024 # 10 MB
-        parts = []
-        file_data.each_slice(part_size).with_index(1) do |part, part_number|
-          part_response = s3_client.upload_part({
-            bucket: bucket_name,
-            key: file_name,
-            part_number: part_number,
-            upload_id: multipart_upload.upload_id,
-            body: part
-          })
-          parts << {etag: part_response.etag, part_number: part_number}
+        # Using upload_stream for multipart upload
+        archive_object.upload_stream(acl: acl, server_side_encryption: server_side_encryption.length > 0 ? server_side_encryption : nil, part_size: 10 * 1024 * 1024) do |upload_stream|
+          upload_stream.binmode
+          upload_stream.write(file_data)
         end
 
-        # Complete multipart upload
-        s3_client.complete_multipart_upload({
-          bucket: bucket_name,
-          key: file_name,
-          upload_id: multipart_upload.upload_id,
-          multipart_upload: { parts: parts }
-        })
-
-        # Reload the object to get the latest state
-        obj.reload
+        # Refresh object to get latest state
+        archive_object.reload
 
         # Object version handling remains the same
-        if obj.kind_of? Aws::S3::ObjectVersion
-          obj = obj.object
+        if archive_object.kind_of? Aws::S3::ObjectVersion
+          archive_object = archive_object.object
         end
 
         # Public URL and download endpoint replacement logic remains the same
-        url = obj.public_url.to_s
+        url = archive_object.public_url.to_s
         if download_endpoint
           url = url.gsub(Regexp.new(download_endpoint_replacement_regex), download_endpoint)
         end
