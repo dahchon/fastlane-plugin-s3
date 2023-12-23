@@ -589,7 +589,7 @@ module Fastlane
         multipart_upload = obj.initiate_multipart_upload({
           acl: acl,
           content_type: MIME::Types.type_for(File.extname(file_name)).first.to_s,
-          server_side_encryption: server_side_encryption
+          server_side_encryption: server_side_encryption.length > 0 ? server_side_encryption : nil
         })
 
         part_size = 10 * 1024 * 1024 # 10 MB
