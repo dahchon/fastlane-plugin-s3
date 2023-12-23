@@ -577,14 +577,34 @@ module Fastlane
         end
 
         bucket = Aws::S3::Bucket.new(bucket_name, client: s3_client)
-        details = {
+        # details = {
+        #   acl: acl,
+        #   key: file_name,
+        #   body: file_data,
+        #   content_type: MIME::Types.type_for(File.extname(file_name)).first.to_s
+        # }
+        # details = details.merge(server_side_encryption: server_side_encryption) if server_side_encryption.length > 0
+        # obj = bucket.put_object(details)
+        obj = bucket.object(file_name)
+        multipart_upload = obj.initiate_multipart_upload({
           acl: acl,
-          key: file_name,
-          body: file_data,
-          content_type: MIME::Types.type_for(File.extname(file_name)).first.to_s
-        }
-        details = details.merge(server_side_encryption: server_side_encryption) if server_side_encryption.length > 0
-        obj = bucket.put_object(details)
+          content_type: MIME::Types.type_for(File.extname(file_name)).first.to_s,
+          server_side_encryption: server_side_encryption
+        })
+
+        part_size = 10 * 1024 * 1024 # 10 MB
+        parts = file_data.each_slice(part_size).map.with_index(1) do |part, part_number|
+          multipart_upload.upload_part({
+            part_number: part_number,
+            body: part
+          })
+        end
+
+        obj = multipart_upload.complete({
+          multipart_upload: {
+            parts: parts.map { |part| {etag: part.etag, part_number: part.part_number} }
+          }
+        })
 
         # When you enable versioning on a S3 bucket,
         # writing to an object will create an object version
