@@ -571,55 +571,51 @@ module Fastlane
       end
 
       def self.upload_file(s3_client, bucket_name, app_directory, file_name, file_data, acl, server_side_encryption, download_endpoint, download_endpoint_replacement_regex)
-
         if app_directory
           file_name = "#{app_directory}/#{file_name}"
         end
 
         bucket = Aws::S3::Bucket.new(bucket_name, client: s3_client)
-        # details = {
-        #   acl: acl,
-        #   key: file_name,
-        #   body: file_data,
-        #   content_type: MIME::Types.type_for(File.extname(file_name)).first.to_s
-        # }
-        # details = details.merge(server_side_encryption: server_side_encryption) if server_side_encryption.length > 0
-        # obj = bucket.put_object(details)
         obj = bucket.object(file_name)
+
+        # Start multipart upload
         multipart_upload = obj.initiate_multipart_upload({
           acl: acl,
           content_type: MIME::Types.type_for(File.extname(file_name)).first.to_s,
-          server_side_encryption: server_side_encryption.length > 0 ? server_side_encryption : nil
+          server_side_encryption: server_side_encryption
         })
 
         part_size = 10 * 1024 * 1024 # 10 MB
+        parts = []
         file_data.each_slice(part_size).with_index(1) do |part, part_number|
-          part_response = obj.upload_part({
+          part_response = s3_client.upload_part({
+            bucket: bucket_name,
+            key: file_name,
             part_number: part_number,
-            body: part,
-            upload_id: multipart_upload.upload_id
+            upload_id: multipart_upload.upload_id,
+            body: part
           })
           parts << {etag: part_response.etag, part_number: part_number}
         end
 
-        obj = multipart_upload.complete({
-          multipart_upload: {
-            parts: parts
-          }
+        # Complete multipart upload
+        s3_client.complete_multipart_upload({
+          bucket: bucket_name,
+          key: file_name,
+          upload_id: multipart_upload.upload_id,
+          multipart_upload: { parts: parts }
         })
 
-        # When you enable versioning on a S3 bucket,
-        # writing to an object will create an object version
-        # instead of replacing the existing object.
-        # http://docs.aws.amazon.com/AWSRubySDK/latest/AWS/S3/ObjectVersion.html
+        # Reload the object to get the latest state
+        obj.reload
+
+        # Object version handling remains the same
         if obj.kind_of? Aws::S3::ObjectVersion
           obj = obj.object
         end
 
-        # Return public url
+        # Public URL and download endpoint replacement logic remains the same
         url = obj.public_url.to_s
-
-        # if a download endpoint is provided, then swap it in before returning
         if download_endpoint
           url = url.gsub(Regexp.new(download_endpoint_replacement_regex), download_endpoint)
         end
